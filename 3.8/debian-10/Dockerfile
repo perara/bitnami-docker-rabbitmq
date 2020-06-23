@@ -10,6 +10,7 @@ ENV HOME="/opt/bitnami/rabbitmq/.rabbitmq" \
 COPY prebuildfs /
 # Install required system packages and dependencies
 RUN install_packages ca-certificates curl gzip libc6 libssl1.1 libtinfo6 locales procps tar zlib1g
+RUN . /opt/bitnami/scripts/libcomponent.sh && component_unpack "ini-file" "1.3.0-0" --checksum 41c77c119c1fb01936942bdd7f463f777d5edc29809038f977a7ab78ffdab342
 RUN . /opt/bitnami/scripts/libcomponent.sh && component_unpack "erlang" "22.3.0-0" --checksum e9b6cba6a355dc2a6cc59829a59240d70cfb247f584a5f65f16fd6754c716166
 RUN . /opt/bitnami/scripts/libcomponent.sh && component_unpack "rabbitmq" "3.8.5-0" --checksum 6eded4caabf8d11c7b8c316c766f122e6c67ba5a2500eb9663ad46cad471dd40
 RUN . /opt/bitnami/scripts/libcomponent.sh && component_unpack "gosu" "1.12.0-0" --checksum 582d501eeb6b338a24f417fededbf14295903d6be55c52d66c52e616c81bcd8c
