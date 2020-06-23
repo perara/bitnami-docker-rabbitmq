@@ -31,6 +31,8 @@ export RABBITMQ_BASE_DIR="/opt/bitnami/rabbitmq"
 export RABBITMQ_BIN_DIR="${RABBITMQ_BASE_DIR}/sbin"
 export RABBITMQ_DATA_DIR="${RABBITMQ_VOLUME_DIR}/mnesia"
 export RABBITMQ_CONF_DIR="${RABBITMQ_BASE_DIR}/etc/rabbitmq"
+export RABBITMQ_CONF_FILE="${RABBITMQ_CONF_DIR}/rabbitmq.conf"
+export RABBITMQ_CONF_ENV_FILE="${RABBITMQ_CONF_DIR}/rabbitmq-env.conf"
 export RABBITMQ_HOME_DIR="${RABBITMQ_BASE_DIR}/.rabbitmq"
 export RABBITMQ_LIB_DIR="${RABBITMQ_BASE_DIR}/var/lib/rabbitmq"
 export RABBITMQ_LOG_DIR="${RABBITMQ_BASE_DIR}/var/log/rabbitmq"
@@ -138,7 +140,7 @@ rabbitmq_validate() {
 ########################
 # Creates RabbitMQ configuration file
 # Globals:
-#   RABBITMQ_CONF_DIR
+#   RABBITMQ_CONF_FILE
 # Arguments:
 #   None
 # Returns:
@@ -147,7 +149,7 @@ rabbitmq_validate() {
 rabbitmq_create_config_file() {
     debug "Creating configuration file..."
 
-    cat > "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+    cat > "${RABBITMQ_CONF_FILE}" <<EOF
 ## Networking
 listeners.tcp.default = $RABBITMQ_NODE_PORT_NUMBER
 
@@ -168,7 +170,7 @@ disk_free_limit.relative = $RABBITMQ_DISK_FREE_LIMIT
 EOF
 
     if is_boolean_yes "$RABBITMQ_ENABLE_LDAP"; then
-        cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+        cat >> "${RABBITMQ_CONF_FILE}" <<EOF
 ## Select an authentication/authorisation backend to use
 auth_backends.1 = rabbit_auth_backend_ldap
 auth_backends.2 = internal
@@ -181,14 +183,14 @@ auth_ldap.user_dn_pattern = $RABBITMQ_LDAP_USER_DN_PATTERN
 EOF
 
         if is_boolean_yes "$RABBITMQ_LDAP_TLS"; then
-            cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+            cat >> "${RABBITMQ_CONF_FILE}" <<EOF
 auth_ldap.use_ssl = true
 
 EOF
         fi
     fi
 
-    cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+    cat >> "${RABBITMQ_CONF_FILE}" <<EOF
 ## Management
 management.tcp.port = $RABBITMQ_MANAGER_PORT_NUMBER
 management.tcp.ip = $RABBITMQ_MANAGER_BIND_IP
@@ -198,7 +200,7 @@ EOF
 ########################
 # Creates RabbitMQ environment file
 # Globals:
-#   RABBITMQ_CONF_DIR
+#   RABBITMQ_CONF_ENV_FILE
 # Arguments:
 #   None
 # Returns:
@@ -206,7 +208,7 @@ EOF
 #########################
 rabbitmq_create_environment_file() {
     debug "Creating environment file..."
-    cat > "${RABBITMQ_CONF_DIR}/rabbitmq-env.conf" <<EOF
+    cat > "${RABBITMQ_CONF_ENV_FILE}" <<EOF
 HOME=$RABBITMQ_HOME_DIR
 NODE_PORT=$RABBITMQ_NODE_PORT_NUMBER
 NODENAME=$RABBITMQ_NODE_NAME
@@ -399,6 +401,31 @@ rabbitmq_join_cluster() {
 }
 
 ########################
+# Add or modify an entry in the RabbitMQ configuration file ("$RABBITMQ_CONF_FILE")
+# Globals:
+#   RABBITMQ_*
+# Arguments:
+#   $1 - RABBITMQ variable name
+#   $2 - Value to assign to the RABBITMQ variable
+#   $3 - Configuration file (default: "$RABBITMQ_CONF_FILE")
+# Returns:
+#   None
+#########################
+rabbitmq_conf_set() {
+    local -r key="${1:?key missing}"
+    local -r value="${2:?value missing}"
+    local -r file="${3:-"$RABBITMQ_CONF_FILE"}"
+    info "Setting ${key} option"
+    debug "Setting ${key} to '${value}' in ${RABBITMQ_CONF_FILE} configuration"
+    # Check if the configuration exists in the file
+    for section in "${sections[@]}"; do
+        ini-file set --section "" --key "$key" --value "$value" "$file"
+    done
+}
+
+
+
+########################
 # Ensure RabbitMQ is initialized
 # Globals:
 #   RABBITMQ_*
@@ -414,10 +441,22 @@ rabbitmq_initialize() {
     if ! is_dir_empty "$RABBITMQ_MOUNTED_CONF_DIR"; then
         cp -Lr "$RABBITMQ_MOUNTED_CONF_DIR"/* "$RABBITMQ_CONF_DIR"
     fi
-    [[ ! -f "${RABBITMQ_CONF_DIR}/rabbitmq.conf" ]] && rabbitmq_create_config_file
+    
+    [[ ! -f "${RABBITMQ_CONF_FILE}" ]] && rabbitmq_create_config_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/rabbit-env.conf" ]] && rabbitmq_create_environment_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/enabled_plugins" ]] && rabbitmq_create_enabled_plugins_file
-
+    
+        # User injected custom configuration
+    if [[ -f "$RABBITMQ_MOUNTED_CONF_DIR/my_custom.cnf" ]]; then
+        debug "Injecting custom configuration from my_custom.conf"
+        while IFS='=' read -r custom_key custom_value
+        do
+            if [ -n "${custom_key}" ]; then
+               rabbitmq_conf_set "$custom_key" "$custom_value" "${RABBITMQ_CONF_FILE}"
+            fi
+        done < "$DB_CONF_DIR/my_custom.cnf"
+    fi
+    
     [[ ! -f "${RABBITMQ_LIB_DIR}/.start" ]] && touch "${RABBITMQ_LIB_DIR}/.start"
     [[ ! -f "${RABBITMQ_HOME_DIR}/.erlang.cookie" ]] && rabbitmq_create_erlang_cookie
     chmod 400 "${RABBITMQ_HOME_DIR}/.erlang.cookie"
