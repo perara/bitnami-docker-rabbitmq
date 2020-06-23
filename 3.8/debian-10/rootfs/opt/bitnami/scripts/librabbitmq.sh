@@ -418,6 +418,8 @@ rabbitmq_conf_set() {
     debug "Setting ${key} to '${value}' in ${RABBITMQ_CONF_FILE} configuration"
     # Check if the configuration exists in the file
     ini-file set --section "" --key "$key" --value "$value" "$file"
+    sed -i 's/;//g' "$file"  # Remove semicolon produced by ini-file command
+    sed -i 's/^\s*//g' "$file"  # Remove leading spaces that occur in affect to the semicolon bug.
 
 }
 
@@ -443,18 +445,16 @@ rabbitmq_initialize() {
     [[ ! -f "${RABBITMQ_CONF_FILE}" ]] && rabbitmq_create_config_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/rabbit-env.conf" ]] && rabbitmq_create_environment_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/enabled_plugins" ]] && rabbitmq_create_enabled_plugins_file
-    
-        # User injected custom configuration
-    if [[ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]]; then
+
+    # User injected custom configuration
+    if [ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]; then
         debug "Injecting custom configuration from my_custom.conf"
-        while IFS='=' read -r custom_key custom_value
+        cat "${RABBITMQ_CUSTOM_CONF_DIR}/my_custom.conf" | while IFS='=' read -r custom_key custom_value || [[ -n $custom_key ]];
         do
-            if [ -n "${custom_key}" ]; then
-               rabbitmq_conf_set "$custom_key" "$custom_value" "${RABBITMQ_CONF_FILE}"
-            fi
-        done < "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf"
+            rabbitmq_conf_set "$custom_key" "$custom_value" "${RABBITMQ_CONF_FILE}"
+        done
     fi
-    
+
     [[ ! -f "${RABBITMQ_LIB_DIR}/.start" ]] && touch "${RABBITMQ_LIB_DIR}/.start"
     [[ ! -f "${RABBITMQ_HOME_DIR}/.erlang.cookie" ]] && rabbitmq_create_erlang_cookie
     chmod 400 "${RABBITMQ_HOME_DIR}/.erlang.cookie"
