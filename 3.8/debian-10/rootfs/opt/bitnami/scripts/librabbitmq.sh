@@ -38,6 +38,7 @@ export RABBITMQ_LIB_DIR="${RABBITMQ_BASE_DIR}/var/lib/rabbitmq"
 export RABBITMQ_LOG_DIR="${RABBITMQ_BASE_DIR}/var/log/rabbitmq"
 export RABBITMQ_PLUGINS_DIR="${RABBITMQ_BASE_DIR}/plugins"
 export RABBITMQ_MOUNTED_CONF_DIR="${RABBITMQ_MOUNTED_CONF_DIR:-${RABBITMQ_VOLUME_DIR}/conf}"
+export RABBITMQ_CUSTOM_CONF_DIR="/bitnami/conf"
 export PATH="${RABBITMQ_BIN_DIR}:${PATH}"
 
 # OS
@@ -148,13 +149,11 @@ rabbitmq_validate() {
 #########################
 rabbitmq_create_config_file() {
     debug "Creating configuration file..."
-
     cat > "${RABBITMQ_CONF_FILE}" <<EOF
 ## Networking
 listeners.tcp.default = $RABBITMQ_NODE_PORT_NUMBER
 
-## On first start RabbitMQ will create a vhost and a user. These
-## config items control what gets created
+## On first start RabbitMQ will create a vhost and a user. These config items control what gets created
 default_vhost = $RABBITMQ_VHOST
 default_user = $RABBITMQ_USERNAME
 default_permissions.configure = .*
@@ -418,9 +417,8 @@ rabbitmq_conf_set() {
     info "Setting ${key} option"
     debug "Setting ${key} to '${value}' in ${RABBITMQ_CONF_FILE} configuration"
     # Check if the configuration exists in the file
-    for section in "${sections[@]}"; do
-        ini-file set --section "" --key "$key" --value "$value" "$file"
-    done
+    ini-file set --section "" --key "$key" --value "$value" "$file"
+
 }
 
 
@@ -441,20 +439,20 @@ rabbitmq_initialize() {
     if ! is_dir_empty "$RABBITMQ_MOUNTED_CONF_DIR"; then
         cp -Lr "$RABBITMQ_MOUNTED_CONF_DIR"/* "$RABBITMQ_CONF_DIR"
     fi
-    
+
     [[ ! -f "${RABBITMQ_CONF_FILE}" ]] && rabbitmq_create_config_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/rabbit-env.conf" ]] && rabbitmq_create_environment_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/enabled_plugins" ]] && rabbitmq_create_enabled_plugins_file
     
         # User injected custom configuration
-    if [[ -f "$RABBITMQ_MOUNTED_CONF_DIR/my_custom.cnf" ]]; then
+    if [[ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]]; then
         debug "Injecting custom configuration from my_custom.conf"
         while IFS='=' read -r custom_key custom_value
         do
             if [ -n "${custom_key}" ]; then
                rabbitmq_conf_set "$custom_key" "$custom_value" "${RABBITMQ_CONF_FILE}"
             fi
-        done < "$DB_CONF_DIR/my_custom.cnf"
+        done < "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf"
     fi
     
     [[ ! -f "${RABBITMQ_LIB_DIR}/.start" ]] && touch "${RABBITMQ_LIB_DIR}/.start"
