@@ -447,7 +447,7 @@ rabbitmq_initialize() {
     [[ ! -f "${RABBITMQ_CONF_DIR}/enabled_plugins" ]] && rabbitmq_create_enabled_plugins_file
 
     # User injected custom configuration
-    if [ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]; then
+    if [[ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]]; then
         debug "Injecting custom configuration from my_custom.conf"
         cat "${RABBITMQ_CUSTOM_CONF_DIR}/my_custom.conf" | while IFS='=' read -r custom_key custom_value || [[ -n $custom_key ]];
         do
