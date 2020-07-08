@@ -51,7 +51,8 @@ export RABBITMQ_MNESIA_BASE="${RABBITMQ_DATA_DIR}"
 # Settings
 export RABBITMQ_CLUSTER_NODE_NAME="${RABBITMQ_CLUSTER_NODE_NAME:-}"
 export RABBITMQ_CLUSTER_PARTITION_HANDLING="${RABBITMQ_CLUSTER_PARTITION_HANDLING:-ignore}"
-export RABBITMQ_DISK_FREE_LIMIT="${RABBITMQ_DISK_FREE_LIMIT:-1.0}"
+export RABBITMQ_DISK_FREE_RELATIVE_LIMIT="${RABBITMQ_DISK_FREE_RELATIVE_LIMIT:-1.0}"
+export RABBITMQ_DISK_FREE_ABSOLUTE_LIMIT="${RABBITMQ_DISK_FREE_ABSOLUTE_LIMIT:-}"
 export RABBITMQ_ERL_COOKIE="${RABBITMQ_ERL_COOKIE:-}"
 export RABBITMQ_HASHED_PASSWORD="${RABBITMQ_HASHED_PASSWORD:-}"
 export RABBITMQ_MANAGER_BIND_IP="${RABBITMQ_MANAGER_BIND_IP:-0.0.0.0}"
@@ -69,8 +70,8 @@ export RABBITMQ_LOGS="${RABBITMQ_LOGS:--}"
 # LDAP
 export RABBITMQ_ENABLE_LDAP="${RABBITMQ_ENABLE_LDAP:-no}"
 export RABBITMQ_LDAP_TLS="${RABBITMQ_LDAP_TLS:-no}"
-export RABBITMQ_LDAP_SERVER="${RABBITMQ_LDAP_SERVER:-}"
-export RABBITMQ_LDAP_SERVER_PORT="${RABBITMQ_LDAP_SERVER_PORT:-389}"
+export RABBITMQ_LDAP_SERVERS="${RABBITMQ_LDAP_SERVERS:-}"
+export RABBITMQ_LDAP_SERVERS_PORT="${RABBITMQ_LDAP_SERVERS_PORT:-389}"
 export RABBITMQ_LDAP_USER_DN_PATTERN="${RABBITMQ_LDAP_USER_DN_PATTERN:-}"
 EOF
 }
@@ -106,8 +107,8 @@ rabbitmq_validate() {
         print_validation_error "An invalid value was specified in the environment variable RABBITMQ_ENABLE_LDAP. Valid values are: yes or no"
     fi
 
-    if is_boolean_yes "$RABBITMQ_ENABLE_LDAP" && ( [[ -z "${RABBITMQ_LDAP_SERVER}" ]] || [[ -z "${RABBITMQ_LDAP_USER_DN_PATTERN}" ]] ); then
-        print_validation_error "The LDAP configuration is required when LDAP authentication is enabled. Set the environment variables RABBITMQ_LDAP_SERVER and RABBITMQ_LDAP_USER_DN_PATTERN."
+    if is_boolean_yes "$RABBITMQ_ENABLE_LDAP" && ( [[ -z "${RABBITMQ_LDAP_SERVERS}" ]] || [[ -z "${RABBITMQ_LDAP_USER_DN_PATTERN}" ]] ); then
+        print_validation_error "The LDAP configuration is required when LDAP authentication is enabled. Set the environment variables RABBITMQ_LDAP_SERVERS and RABBITMQ_LDAP_USER_DN_PATTERN."
         if !  is_yes_no_value "$RABBITMQ_LDAP_TLS"; then
             print_validation_error "An invalid value was specified in the environment variable RABBITMQ_LDAP_TLS. Valid values are: yes or no"
         fi
@@ -162,11 +163,19 @@ default_permissions.write = .*
 
 ## Clustering
 cluster_partition_handling = $RABBITMQ_CLUSTER_PARTITION_HANDLING
-
-## Set a limit relative to total available RAM
-disk_free_limit.relative = $RABBITMQ_DISK_FREE_LIMIT
-
 EOF
+
+    if [[ -n "$RABBITMQ_DISK_FREE_ABSOLUTE_LIMIT" ]]; then
+        cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+## Set an absolute disk free space limit
+disk_free_limit.absolute = $RABBITMQ_DISK_FREE_ABSOLUTE_LIMIT
+EOF
+    else
+        cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+## Set a limit relative to total available RAM
+disk_free_limit.relative = $RABBITMQ_DISK_FREE_RELATIVE_LIMIT
+EOF
+    fi
 
     if is_boolean_yes "$RABBITMQ_ENABLE_LDAP"; then
         cat >> "${RABBITMQ_CONF_FILE}" <<EOF
@@ -175,8 +184,17 @@ auth_backends.1 = rabbit_auth_backend_ldap
 auth_backends.2 = internal
 
 ## Connecting to the LDAP server(s)
-auth_ldap.servers.1 = $RABBITMQ_LDAP_SERVER
-auth_ldap.port = $RABBITMQ_LDAP_SERVER_PORT
+EOF
+        read -r -a ldap_servers <<< "$(tr ',;' ' ' <<< "$RABBITMQ_LDAP_SERVERS")"
+        local index=1
+        for server in "${ldap_servers[@]}"; do
+            cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+auth_ldap.servers.${index} = $server
+EOF
+            index=$((index + 1 ))
+        done
+        cat >> "${RABBITMQ_CONF_DIR}/rabbitmq.conf" <<EOF
+auth_ldap.port = $RABBITMQ_LDAP_SERVERS_PORT
 auth_ldap.user_dn_pattern = $RABBITMQ_LDAP_USER_DN_PATTERN
 
 EOF
@@ -215,9 +233,28 @@ EOF
 }
 
 ########################
-# Creates RabbitMQ environment file
+# Download RabbitMQ custom plugins
 # Globals:
-#   RABBITMQ_CONF_DIR
+#   RABBITMQ_*
+# Arguments:
+#   None
+# Returns:
+#   None
+#########################
+rabbitmq_download_community_plugins() {
+    debug "Downloading custom plugins..."
+    read -r -a plugins <<< "$(tr ',;' ' ' <<< "$RABBITMQ_COMMUNITY_PLUGINS")"
+    cd "$RABBITMQ_PLUGINS_DIR" || return
+    for plugin in "${plugins[@]}"; do
+        curl --remote-name --location --silent "$plugin"
+    done
+    cd - || return
+}
+
+########################
+# Creates RabbitMQ plugins file
+# Globals:
+#   RABBITMQ_*
 # Arguments:
 #   None
 # Returns:
@@ -450,6 +487,7 @@ rabbitmq_initialize() {
     [[ ! -f "${RABBITMQ_CONF_FILE}" ]] && rabbitmq_create_config_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/rabbit-env.conf" ]] && rabbitmq_create_environment_file
     [[ ! -f "${RABBITMQ_CONF_DIR}/enabled_plugins" ]] && rabbitmq_create_enabled_plugins_file
+    [[ -n "${RABBITMQ_COMMUNITY_PLUGINS:-}" ]] && rabbitmq_download_community_plugins
 
     # User injected custom configuration
     if [[ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]]; then
