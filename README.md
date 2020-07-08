@@ -167,7 +167,7 @@ $ docker-compose up -d
 ```
 
 ## Configuration
-The image looks for user-defined configurations in /bitnami/conf/my_custom.conf. Create a file named my_custom.cnf and mount it at /bitnami/conf/my_custom.conf.
+The image looks for user-defined configurations in /bitnami/conf/my_custom.conf. Create a file named my_custom.conf and mount it at /bitnami/conf/my_custom.conf.
 
 For example, in order to override the `listeners.tcp.default` directive:
 
@@ -178,7 +178,7 @@ listeners.tcp.default=1337
 
 #### Step 2: Added the following volume to your configuration.
 ```
--v /path/to/my_custom.cnf:/bitnami/conf/my_custom.cnf:ro \
+-v /path/to/my_custom.conf:/bitnami/conf/my_custom.conf:ro \
 ```
 
 After that, your changes will be taken into account in the server's behaviour.
