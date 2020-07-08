@@ -415,11 +415,16 @@ rabbitmq_conf_set() {
     local -r value="${2:?value missing}"
     local -r file="${3:-"$RABBITMQ_CONF_FILE"}"
     info "Setting ${key} option"
-    debug "Setting ${key} to '${value}' in ${RABBITMQ_CONF_FILE} configuration"
-    # Check if the configuration exists in the file
-    ini-file set --section "" --key "$key" --value "$value" "$file"
-    sed -i 's/;//g' "$file"  # Remove semicolon produced by ini-file command
-    sed -i 's/^\s*//g' "$file"  # Remove leading spaces that occur in affect to the semicolon bug.
+    debug "Setting ${key} to '${value}' in ${file} configuration"
+
+    if grep -qE "${key}" "${file}"; then
+      # Key already exists, overide old value
+      replace_in_file "${file}" "^${key}\s*=\s*.*" "${key} = ${value}"
+    else
+      # Key does not exists. append to end of file.
+      echo "${key} = ${value}" >> "${file}"
+    fi
+
 
 }
 
