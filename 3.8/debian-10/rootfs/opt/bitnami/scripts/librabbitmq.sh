@@ -461,11 +461,7 @@ rabbitmq_conf_set() {
       # Key does not exists. append to end of file.
       echo "${key} = ${value}" >> "${file}"
     fi
-
-
 }
-
-
 
 ########################
 # Ensure RabbitMQ is initialized
