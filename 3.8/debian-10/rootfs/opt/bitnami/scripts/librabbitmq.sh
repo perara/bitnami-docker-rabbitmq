@@ -488,7 +488,7 @@ rabbitmq_initialize() {
     # User injected custom configuration
     if [[ -f "$RABBITMQ_CUSTOM_CONF_DIR/my_custom.conf" ]]; then
         debug "Injecting custom configuration from my_custom.conf"
-        cat "${RABBITMQ_CUSTOM_CONF_DIR}/my_custom.conf" | while IFS='=' read -r custom_key custom_value || [[ -n $custom_key ]];
+        grep -E "^\w.*\s?=\s?.*" "${RABBITMQ_CUSTOM_CONF_DIR}/my_custom.conf" | while IFS='=' read -r custom_key custom_value || [[ -n $custom_key ]];
         do
             rabbitmq_conf_set "$custom_key" "$custom_value" "${RABBITMQ_CONF_FILE}"
         done
